@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Scoreboard from "../components/Scoreboard";
 
-const QuizPage = () => {
+const Quizpage = () => {
   const [questions, setQuestions] = useState([]);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [selectedAnswer, setSelectedAnswer] = useState(null);
@@ -318,4 +318,4 @@ const CustomQuestion = ({ question, selectedAnswer, setSelectedAnswer }) => {
   return null;
 };
 
-export default QuizPage;
+export default Quizpage;
