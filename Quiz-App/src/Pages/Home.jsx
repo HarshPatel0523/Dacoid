@@ -3,7 +3,8 @@ import { motion } from "framer-motion";
 
 const Home = () => {
   return (
-    <div className="h-screen flex flex-col items-center justify-center bg-slate-900 text-white relative overflow-hidden">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white relative overflow-hidden py-4 px-2 sm:py-12 sm:px-6">
+
       {/* Animated Background Elements */}
       <div className="absolute inset-0 overflow-hidden">
         {[...Array(5)].map((_, i) => (

@@ -1,6 +1,7 @@
 /* eslint-disable react/prop-types */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { saveQuizHistory, getQuizHistory } from "../utils/indexedDB"; 
 import Scoreboard from "../Components/Scoreboard";
 
 const Quizpage = () => {
@@ -10,8 +11,20 @@ const Quizpage = () => {
   const [score, setScore] = useState(0);
   const [timer, setTimer] = useState(30);
   const [quizFinished, setQuizFinished] = useState(false);
+  const [attempts, setAttempts] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [quizHistory, setQuizHistory] = useState([]);
   const [feedback, setFeedback] = useState(null);
+
+  const resetQuiz = () => {
+    setCurrentQuestion(0);
+    setSelectedAnswer(null);
+    setScore(0);
+    setTimer(30);
+    setQuizFinished(false);
+    setFeedback(null);
+  };
+
 
   useEffect(() => {
     fetch("/quiz.json")
@@ -39,21 +52,27 @@ const Quizpage = () => {
 
   const checkAnswer = () => {
     if (!questions.length || isSubmitting || feedback) return;
-    
+
     setIsSubmitting(true);
-    
     const correct = questions[currentQuestion].answer;
-    const isCorrect = 
-      (questions[currentQuestion].type === "mcq" && selectedAnswer === correct) ||
-      (questions[currentQuestion].type === "integer" && parseInt(selectedAnswer) === correct);
-    
+
+    const currentAnswer = questions[currentQuestion].type === "integer" 
+    ? parseInt(selectedAnswer, 10) 
+    : selectedAnswer;
+
+    const isCorrect = questions[currentQuestion].type === "integer"
+      ? !isNaN(currentAnswer) && currentAnswer === correct
+      : currentAnswer === correct;
+
+    setFeedback({
+      type: isCorrect ? "correct" : "incorrect",
+      message: isCorrect ? "Correct!" : "Incorrect"
+    });
+
     if (isCorrect) {
       setScore(score + 1);
-      setFeedback({ type: "correct", message: "Correct!" });
-    } else {
-      setFeedback({ type: "incorrect", message: "Incorrect" });
     }
-    
+
     setTimeout(() => {
       setFeedback(null);
       nextQuestion();
@@ -68,20 +87,40 @@ const Quizpage = () => {
       setTimer(30);
     } else {
       setQuizFinished(true);
+      const newAttempt = {
+        score,
+        questions,
+        timestamp: new Date().getTime(),
+        attemptNumber: attempts + 1
+      };
+      
+      saveQuizHistory(newAttempt);
+      setAttempts(attempts + 1);
     }
   };
 
-  // Progress calculation
   const progress = questions.length ? ((currentQuestion + 1) / questions.length) * 100 : 0;
 
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const history = await getQuizHistory();
+        setQuizHistory(history);
+      } catch (error) {
+        console.error("Error fetching quiz history:", error);
+      }
+    };
+
+    fetchHistory();
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 py-12 px-4 sm:px-6">
-      {/* Floating elements in background */}
+    <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 py-12 px-4 sm:px-6 md:px-8 lg:px-10">
       <div className="fixed inset-0 -z-10">
         <div className="absolute top-1/4 left-1/5 w-72 h-72 rounded-full bg-emerald-600/10 blur-3xl"></div>
         <div className="absolute bottom-1/3 right-1/4 w-80 h-80 rounded-full bg-teal-500/10 blur-3xl"></div>
       </div>
-      
+
       <div className="max-w-3xl mx-auto">
         {quizFinished ? (
           <motion.div
@@ -89,31 +128,78 @@ const Quizpage = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <Scoreboard score={score} total={questions.length} />
+            <Scoreboard score={score} total={questions.length} attempts={attempts} />
+            
+            <motion.button
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3, duration: 0.5 }}
+              onClick={resetQuiz}
+              className="mt-8 w-full py-3 px-6 rounded-lg font-medium text-base sm:text-lg 
+                bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-900 
+                hover:shadow-lg hover:shadow-emerald-500/20 
+                active:scale-95 transition-all duration-200
+                flex items-center justify-center gap-2"
+            >
+              <svg 
+                className="w-5 h-5" 
+                fill="none" 
+                viewBox="0 0 24 24" 
+                stroke="currentColor"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth={2} 
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+                />
+              </svg>
+              Try Again
+            </motion.button>
+
+            <div className="mt-8 flex flex-col items-center">
+              <h3 className="text-2xl font-bold text-teal-100">Quiz History (Attempts: {attempts})</h3>
+              <ul className="mt-4 space-y-2">
+                {quizHistory.map((history, index) => {
+                  const percentage = ((history.score / history.questions.length) * 100).toFixed(1);
+                  const date = new Date(history.timestamp).toLocaleString();
+                  return (
+                    <li key={index} className="text-teal-200 bg-slate-800/30 p-3 rounded-lg">
+                      <div className="flex justify-between">
+                        <span>Score: {history.score}/{history.questions.length}</span>
+                        <span>{percentage}%</span>
+                      </div>
+                      <div className="text-xs text-teal-300/60 mt-1">
+                        {date}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           </motion.div>
         ) : questions.length > 0 ? (
           <>
-            {/* Quiz Header */}
             <div className="mb-8 flex justify-between items-center">
-              <motion.div 
+              <motion.div
                 className="flex items-center bg-teal-900/30 backdrop-blur-lg rounded-full py-1 pl-1 pr-4"
                 initial={{ x: -20, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
                 transition={{ duration: 0.4 }}
               >
-                <div className="bg-teal-500 text-slate-900 font-bold rounded-full w-8 h-8 flex items-center justify-center mr-2">
+                <div className="bg-teal-500 text-slate-900 font-bold rounded-full w-10 h-10 flex items-center justify-center mr-2">
                   {currentQuestion + 1}
                 </div>
                 <span className="text-teal-100 text-sm">of {questions.length}</span>
               </motion.div>
-              
+
               <motion.div
-                className="flex flex-col items-center"
+                className="flex flex-col items-center gap-2 text-center"
                 initial={{ y: -20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
                 transition={{ duration: 0.4, delay: 0.1 }}
               >
-                <div className="relative w-12 h-12 mb-1">
+                <div className="relative w-14 h-14 mb-1 mx-auto">
                   <svg className="w-12 h-12 transform -rotate-90">
                     <circle
                       className="text-slate-800"
@@ -128,7 +214,7 @@ const Quizpage = () => {
                       className="text-teal-400 transition-all duration-1000"
                       strokeWidth="4"
                       strokeDasharray={125.6}
-                      strokeDashoffset={125.6 * (1 - timer/30)}
+                      strokeDashoffset={125.6 * (1 - timer / 30)}
                       strokeLinecap="round"
                       stroke="currentColor"
                       fill="transparent"
@@ -137,30 +223,28 @@ const Quizpage = () => {
                       cy="24"
                     />
                   </svg>
-                  <div className="absolute inset-0 flex items-center justify-center font-mono font-bold text-white">
+                  <div className="absolute inset-0 right-2 bottom-2 flex items-center justify-center font-mono font-bold text-white">
                     {timer}
                   </div>
                 </div>
-                <span className="text-teal-200/70 text-xs">seconds left</span>
+                <span className="text-teal-200/70 text-xs w-full text-center">seconds left</span>
               </motion.div>
             </div>
-            
-            {/* Progress bar */}
-            <motion.div 
+
+            <motion.div
               className="h-1.5 w-full bg-slate-800/50 rounded-full mb-10 overflow-hidden"
               initial={{ opacity: 0, scaleX: 0.8 }}
               animate={{ opacity: 1, scaleX: 1 }}
               transition={{ duration: 0.4 }}
             >
-              <motion.div 
+              <motion.div
                 className="h-full bg-gradient-to-r from-teal-400 via-emerald-400 to-teal-500"
                 initial={{ width: `${((currentQuestion) / questions.length) * 100}%` }}
                 animate={{ width: `${progress}%` }}
                 transition={{ duration: 0.7 }}
               />
             </motion.div>
-            
-            {/* Quiz Card */}
+
             <AnimatePresence mode="wait">
               <motion.div
                 key={`question-${currentQuestion}`}
@@ -170,14 +254,13 @@ const Quizpage = () => {
                 transition={{ duration: 0.5, type: "spring", stiffness: 100 }}
                 className="relative"
               >
-                {/* Feedback overlay */}
                 {feedback && (
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     className="absolute inset-0 flex items-center justify-center z-20 backdrop-blur-sm bg-slate-900/60 rounded-2xl"
                   >
-                    <motion.div 
+                    <motion.div
                       initial={{ scale: 0.8 }}
                       animate={{ scale: 1 }}
                       className={`py-3 px-8 rounded-full text-xl font-bold ${
@@ -189,24 +272,19 @@ const Quizpage = () => {
                     </motion.div>
                   </motion.div>
                 )}
-                
-                {/* Main Question Card with New Design */}
+
                 <div className="relative overflow-hidden rounded-2xl">
-                  {/* Question content with new color scheme */}
                   <div className="bg-gradient-to-br from-slate-800/95 via-slate-800/90 to-slate-900/95 p-8 backdrop-blur-md border border-teal-500/20">
-                    {/* Decorative elements */}
                     <div className="absolute top-0 right-0 w-40 h-40 bg-teal-500/5 rounded-full blur-3xl -translate-y-20 translate-x-20"></div>
                     <div className="absolute bottom-0 left-0 w-40 h-40 bg-emerald-400/5 rounded-full blur-3xl translate-y-20 -translate-x-20"></div>
-                    
-                    {/* Question text with improved typography */}
-                    <h2 className="text-3xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-teal-200 to-emerald-200 mb-4 leading-tight">
+
+                    <h2 className="text-4xl font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-teal-200 to-emerald-200 mb-4 leading-tight">
                       {questions[currentQuestion].question}
                     </h2>
                     <p className="text-teal-200/60 text-sm uppercase tracking-wider font-medium mb-8">
                       {questions[currentQuestion].type === "mcq" ? "Select the best answer" : "Enter the correct number"}
                     </p>
-                    
-                    {/* Options section with custom styling */}
+
                     <div className="space-y-4 relative z-10">
                       <CustomQuestion
                         question={questions[currentQuestion]}
@@ -218,21 +296,18 @@ const Quizpage = () => {
                 </div>
               </motion.div>
             </AnimatePresence>
-            
-            {/* Submit button */}
+
             <motion.button
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.5 }}
               onClick={checkAnswer}
               disabled={selectedAnswer === null || isSubmitting || feedback !== null}
-              className={`mt-8 w-full py-4 rounded-xl font-medium text-lg transition-all flex items-center justify-center gap-2
-                ${selectedAnswer === null || isSubmitting || feedback !== null
+              className={`mt-8 w-full py-3 rounded-lg font-medium text-base sm:text-lg transition-all flex items-center justify-center gap-2 ${
+                selectedAnswer === null || isSubmitting || feedback !== null
                   ? 'bg-slate-700/50 text-slate-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-teal-500 to-emerald-500 text-slate-900 font-semibold shadow-lg hover:shadow-teal-500/20'
-                }`}
-              whileHover={selectedAnswer !== null && !isSubmitting && feedback === null ? { scale: 1.02 } : {}}
-              whileTap={selectedAnswer !== null && !isSubmitting && feedback === null ? { scale: 0.98 } : {}}
+                  : 'bg-gradient-to-r from-teal-500 to-emerald-500 text-slate-900 font-semibold shadow-md hover:shadow-teal-500/20 active:scale-95'
+              }`}
             >
               {isSubmitting ? (
                 <svg className="animate-spin h-5 w-5 text-slate-800" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -241,7 +316,7 @@ const Quizpage = () => {
                 </svg>
               ) : (
                 <>
-                  <span>Submit Answer</span>
+                  Submit Answer
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>
@@ -266,8 +341,15 @@ const Quizpage = () => {
   );
 };
 
-// Custom Question component with better styling
 const CustomQuestion = ({ question, selectedAnswer, setSelectedAnswer }) => {
+  const inputRef = useRef(null);
+  
+  useEffect(() => {
+    if (question.type === "integer" && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [question]);
+
   if (question.type === "mcq") {
     return (
       <div className="space-y-3">
@@ -305,6 +387,7 @@ const CustomQuestion = ({ question, selectedAnswer, setSelectedAnswer }) => {
     return (
       <div>
         <input
+          ref={inputRef}
           type="number"
           value={selectedAnswer || ""}
           onChange={(e) => setSelectedAnswer(e.target.value)}
@@ -314,7 +397,7 @@ const CustomQuestion = ({ question, selectedAnswer, setSelectedAnswer }) => {
       </div>
     );
   }
-  
+
   return null;
 };
 
