@@ -1,7 +1,7 @@
 /* eslint-disable react/prop-types */
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import Scoreboard from "../components/Scoreboard";
+import Scoreboard from "../Components/Scoreboard";
 
 const Quizpage = () => {
   const [questions, setQuestions] = useState([]);
